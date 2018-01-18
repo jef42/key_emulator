@@ -11,11 +11,43 @@
 
 #define KEY_PRESS 1
 #define KEY_RELEASE 0
+#define BUFF_LENGTH 255
 
-static const char *file_path = "/dev/input/event6";
 static const char *uinput_file_path = "/dev/uinput";
 static char shift_pressed = 0;
 static char ctrl_pressed = 0;
+
+static char buff[BUFF_LENGTH] = "/dev/input/event";
+
+const char* find_event_file(const char *file_name) {
+    size_t len = 0;
+    ssize_t read;
+    char *line;
+    FILE *fd = fopen(file_name, "r");
+    char tmp[BUFF_LENGTH];
+    memset(tmp, 0, BUFF_LENGTH);
+
+    while((read = getline(&line, &len, fd)) != -1) {
+        if (memcmp(line, "H: Handlers=", 12) == 0) {
+            memcpy(tmp, line, read);
+        } else {
+            if (memcmp(line, "B: EV=", 6) == 0) {
+                if (memcmp(line, "B: EV=120013", 12) == 0) {
+                    memcpy(buff, tmp, BUFF_LENGTH);
+                } else {
+                    memset(tmp, 0, BUFF_LENGTH);
+                }
+            }
+        }
+    }
+    memcpy(tmp, buff, BUFF_LENGTH);
+    memset(buff, 0, BUFF_LENGTH);
+    strcpy(buff, "/dev/input/event");
+    buff[16] = tmp[27];
+
+    fclose(fd);
+    return buff;
+}
 
 char is_shift(short code) {
     return code == KEY_LEFTSHIFT ||
@@ -90,7 +122,8 @@ void press_while_ctrl_shift_key(int fd, int key) {
 }
 
 int main(int argc, char* argv[]) {
-    int event_fd = open(file_path, O_RDONLY);
+    const char *path = find_event_file("/proc/bus/input/devices");
+    int event_fd = open(path, O_RDONLY);
     if (event_fd == -1) {
         printf("Error event_fd\n");
         return -1;
